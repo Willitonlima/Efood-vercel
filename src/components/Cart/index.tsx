@@ -3,6 +3,8 @@ import styled, { keyframes } from 'styled-components'
 import { useAppDispatch, useAppSelector } from '../../store/hooks'
 import { clearCartKeepOpen, closeCart, removeItem } from '../../store/cartSlice'
 import { setConfirmation, setError, setLoading } from '../../store/orderSlice'
+import { clampDigits, formatCardNumber, onlyDigits } from '../../utils/formatters'
+
 
 /* ---- Animations ---- */
 const slideIn = keyframes`from{transform:translateX(100%)}to{transform:translateX(0)}`
@@ -298,8 +300,30 @@ const Cart: React.FC = () => {
   const total = items.reduce((acc, item) => acc + item.preco * item.quantity, 0)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+
+    setForm((prev) => {
+      switch (name) {
+        case 'zipCode':
+          return { ...prev, zipCode: clampDigits(value, 8) }
+        case 'number':
+          return { ...prev, number: onlyDigits(value) }
+        case 'cardNumber':
+          return { ...prev, cardNumber: formatCardNumber(value) }
+        case 'cardCode':
+          return { ...prev, cardCode: clampDigits(value, 3) }
+        case 'expiresMonth':
+          return { ...prev, expiresMonth: clampDigits(value, 2) }
+        case 'expiresYear':
+          return { ...prev, expiresYear: clampDigits(value, 4) }
+        default:
+          return { ...prev, [name]: value }
+      }
+    })
+
+    dispatch(setError(''))
   }
+
 
   const handleSubmit = async () => {
     if (!form.receiver || !form.address || !form.cardName || !form.cardNumber || !form.cardCode || !form.expiresMonth || !form.expiresYear) {
