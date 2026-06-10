@@ -6,7 +6,6 @@ import { setConfirmation, setLoading, setError } from '../../store/orderSlice'
 import { clearCart } from '../../store/cartSlice'
 import { HeaderPerfil as Header } from '../../components/Header'
 import Footer from '../../components/Footer'
-
 interface FormState {
   receiver: string
   address: string
@@ -94,11 +93,14 @@ const ErrorMsg = styled.p`
   font-family: 'Roboto', sans-serif;
 `
 
+import { onlyDigits, clampDigits, formatCardNumber } from '../../utils/formatters'
+
 const Checkout: React.FC = () => {
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const { items } = useAppSelector((s) => s.cart)
   const { loading, error } = useAppSelector((s) => s.order)
+
 
   const [form, setForm] = useState<FormState>({
     receiver: '', address: '', city: '', zipCode: '',
@@ -106,13 +108,79 @@ const Checkout: React.FC = () => {
     cardCode: '', expiresMonth: '', expiresYear: '',
   })
 
+  const [deliveryError, setDeliveryError] = useState<string | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+
+    setForm((f) => {
+      switch (name) {
+        case 'zipCode':
+          return { ...f, zipCode: clampDigits(value, 8) }
+        case 'number':
+          return { ...f, number: onlyDigits(value) }
+        case 'cardNumber':
+          return { ...f, cardNumber: formatCardNumber(value) }
+        case 'cardCode':
+          return { ...f, cardCode: clampDigits(value, 3) }
+        case 'expiresMonth':
+          return { ...f, expiresMonth: clampDigits(value, 2) }
+        case 'expiresYear':
+          return { ...f, expiresYear: clampDigits(value, 4) }
+        default:
+          return { ...f, [name]: value }
+      }
+    })
+
+    setDeliveryError(null)
+    setPaymentError(null)
+    dispatch(setError(''))
+  }
+
+  const validateDelivery = () => {
+    if (!form.receiver.trim()) return 'Verifique: nome do destinatário é obrigatório.'
+    if (!form.address.trim()) return 'Verifique: endereço é obrigatório.'
+    if (!form.city.trim()) return 'Verifique: cidade é obrigatória.'
+    if (!form.zipCode || form.zipCode.length < 8) return 'Verifique: CEP deve conter 8 dígitos.'
+    if (!form.number || form.number.length < 1) return 'Verifique: número do endereço é obrigatório.'
+    return null
+  }
+
+  const validatePayment = () => {
+    if (!form.cardName.trim()) return 'Verifique: nome no cartão é obrigatório.'
+    const cardDigits = onlyDigits(form.cardNumber)
+    if (!cardDigits || cardDigits.length < 13) return 'Verifique: número do cartão deve conter dígitos válidos.'
+    if (!form.cardCode || form.cardCode.length !== 3) return 'Verifique: CVV deve conter 3 dígitos.'
+    if (!form.expiresMonth || form.expiresMonth.length !== 2) return 'Verifique: mês deve conter 2 dígitos.'
+    if (!form.expiresYear || form.expiresYear.length !== 4) return 'Verifique: ano deve conter 4 dígitos.'
+    return null
   }
 
   const handleSubmit = async () => {
-    if (!form.receiver || !form.address || !form.cardNumber) return
+    setDeliveryError(null)
+    setPaymentError(null)
+
+    if (items.length === 0) {
+      dispatch(setError('Carrinho vazio.'))
+      return
+    }
+
+    const dErr = validateDelivery()
+    if (dErr) {
+      setDeliveryError(dErr)
+      return
+    }
+
+    const pErr = validatePayment()
+    if (pErr) {
+      setPaymentError(pErr)
+      return
+    }
+
     dispatch(setLoading(true))
+    dispatch(setError(''))
+
     try {
       const body = {
         products: items.map((i) => ({ id: i.id, price: i.preco })),
@@ -129,7 +197,7 @@ const Checkout: React.FC = () => {
         payment: {
           card: {
             name: form.cardName,
-            number: form.cardNumber,
+            number: onlyDigits(form.cardNumber),
             code: Number(form.cardCode),
             expires: {
               month: Number(form.expiresMonth),
@@ -138,12 +206,16 @@ const Checkout: React.FC = () => {
           },
         },
       }
+
       const res = await fetch('https://api-ebac.vercel.app/api/efood/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+
       const data = await res.json()
+
+      // Back-end deve decidir a validação final; aqui salvamos o que ele responder.
       dispatch(setConfirmation(data))
       dispatch(clearCart())
       navigate('/confirmacao')
@@ -151,6 +223,7 @@ const Checkout: React.FC = () => {
       dispatch(setError('Erro ao processar o pedido. Tente novamente.'))
     }
   }
+
 
   return (
     <>
@@ -220,6 +293,8 @@ const Checkout: React.FC = () => {
               <Input name="expiresYear" value={form.expiresYear} onChange={handleChange} placeholder="AAAA" maxLength={4} />
             </div>
           </Row>
+          {deliveryError && <ErrorMsg>{deliveryError}</ErrorMsg>}
+          {paymentError && <ErrorMsg>{paymentError}</ErrorMsg>}
           {error && <ErrorMsg>{error}</ErrorMsg>}
           <SubmitBtn onClick={handleSubmit} disabled={loading}>
             {loading ? 'Processando...' : 'Finalizar pedido'}
