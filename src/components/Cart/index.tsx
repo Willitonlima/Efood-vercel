@@ -233,6 +233,7 @@ const SuccessCard = styled.div`
   padding: 0 8px;
 `
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const SuccessTitle = styled.h3`
   font-size: 16px;
   font-weight: 700;

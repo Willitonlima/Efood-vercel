@@ -1,0 +1,8 @@
+# Ignore local-only files
+node_modules
+build
+.vercel
+
+# Keep sources
+!
+
